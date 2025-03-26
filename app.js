@@ -477,7 +477,7 @@ function addRandomThreat() {
             class: 'critical', 
             icon: 'skull', 
             name: 'Ransomware Attempt', 
-            desc: 'Detected encryption process on Server-' + (Math.floor(Math.random() * 20) + 1)
+            desc: 'Detected encryption process on Server-' + (Math.floor(Math.random() * 20) + 1 )
         },
         { 
             class: 'high', 
@@ -586,4 +586,4 @@ function animateElements() {
         loop: true,
         direction: 'alternate'
     });
-}    
+}
