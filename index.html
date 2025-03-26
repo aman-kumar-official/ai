@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuraShield | AI Cyber Threat Detection</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"></script>
+    <script src="charts.js"></script>
+    <script src="app.js"></script>
+    
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <i class="fas fa-shield-alt"></i>
+            <h1>NeuraShield</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="#" class="active">Dashboard</a></li>
+                <li><a href="#">Threat Detection</a></li>
+                <li><a href="#">Incidents</a></li>
+                <li><a href="#">Reports</a></li>
+                <li><a href="#">Integrations</a></li>
+            </ul>
+        </nav>
+        <div class="auth-buttons">
+            <button class="btn btn-outline"><i class="fas fa-bell"></i></button>
+            <button class="btn btn-outline"><i class="fas fa-cog"></i></button>
+            <button class="btn btn-primary">Quick Scan</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <aside class="sidebar">
+            <h3><i class="fas fa-tachometer-alt"></i> Dashboard</h3>
+            <ul class="sidebar-menu">
+                <li><a href="#" class="active"><i class="fas fa-home"></i> Overview</a></li>
+                <li><a href="#"><i class="fas fa-bolt"></i> Real-Time Alerts</a></li>
+                <li><a href="#"><i class="fas fa-chart-line"></i> Analytics</a></li>
+                <li><a href="#"><i class="fas fa-network-wired"></i> Network Map</a></li>
+                <li><a href="#"><i class="fas fa-user-shield"></i> User Behavior</a></li>
+                <li><a href="#"><i class="fas fa-history"></i> Threat History</a></li>
+                <li><a href="#"><i class="fas fa-cogs"></i> System Settings</a></li>
+            </ul>
+
+            <h3 style="margin-top: 2rem;"><i class="fas fa-plug"></i> Integrations</h3>
+            <ul class="sidebar-menu">
+                <li><a href="#"><i class="fab fa-windows"></i> Azure Sentinel</a></li>
+                <li><a href="#"><i class="fas fa-cloud"></i> AWS GuardDuty</a></li>
+                <li><a href="#"><i class="fas fa-database"></i> Splunk</a></li>
+                <li><a href="#"><i class="fab fa-google"></i> Chronicle</a></li>
+            </ul>
+        </aside>
+
+        <main class="dashboard">
+            <div class="dashboard-header">
+                <h2>Threat Intelligence Dashboard</h2>
+                <div class="time-filter">
+                    <button class="active">24h</button>
+                    <button>7d</button>
+                    <button>30d</button>
+                    <button>90d</button>
+                    <button>Custom</button>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <h4>Threats Detected</h4>
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <div class="stat-value">142</div>
+                    <div class="stat-change up">
+                        <i class="fas fa-arrow-up"></i> 12% from yesterday
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <h4>Critical Threats</h4>
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="stat-value">23</div>
+                    <div class="stat-change up">
+                        <i class="fas fa-arrow-up"></i> 5 new critical
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <h4>False Positives</h4>
+                        <i class="fas fa-filter"></i>
+                    </div>
+                    <div class="stat-value">8%</div>
+                    <div class="stat-change down">
+                        <i class="fas fa-arrow-down"></i> 2% improvement
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <h4>Response Time</h4>
+                        <i class="fas fa-stopwatch"></i>
+                    </div>
+                    <div class="stat-value">3.2s</div>
+                    <div class="stat-change down">
+                        <i class="fas fa-arrow-down"></i> 0.8s faster
+                    </div>
+                </div>
+            </div>
+
+            <div class="main-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h4>Threat Activity Timeline</h4>
+                        <div class="chart-actions">
+                            <button><i class="fas fa-expand"></i></button>
+                            <button><i class="fas fa-download"></i></button>
+                        </div>
+                    </div>
+                    <div class="chart-container" id="threatTimelineChart">
+                        <!-- Chart will be rendered here -->
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h4>Threat Type Distribution</h4>
+                        <div class="chart-actions">
+                            <button><i class="fas fa-expand"></i></button>
+                            <button><i class="fas fa-download"></i></button>
+                        </div>
+                    </div>
+                    <div class="chart-container" id="threatDistributionChart">
+                        <!-- Chart will be rendered here -->
+                        <canvas id="distributionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="main-grid">
+                <div class="threat-list">
+                    <div class="threat-list-header">
+                        <h4>Recent Threat Alerts</h4>
+                    </div>
+                    <div class="threat-list-content">
+                        <div class="threat-item critical">
+                            <div class="threat-icon">
+                                <i class="fas fa-skull"></i>
+                            </div>
+                            <div class="threat-content">
+                                <h5>Ransomware Attempt</h5>
+                                <p>Detected encryption process on Server-12</p>
+                            </div>
+                            <div class="threat-time">2 min ago</div>
+                        </div>
+
+                        <div class="threat-item high">
+                            <div class="threat-icon">
+                                <i class="fas fa-user-secret"></i>
+                            </div>
+                            <div class="threat-content">
+                                <h5>Unauthorized Access</h5>
+                                <p>Brute force attempt on admin account</p>
+                            </div>
+                            <div class="threat-time">15 min ago</div>
+                        </div>
+
+                        <div class="threat-item medium">
+                            <div class="threat-icon">
+                                <i class="fas fa-network-wired"></i>
+                            </div>
+                            <div class="threat-content">
+                                <h5>Port Scanning</h5>
+                                <p>Multiple ports scanned from 192.168.1.45</p>
+                            </div>
+                            <div class="threat-time">32 min ago</div>
+                        </div>
+
+                        <div class="threat-item high">
+                            <div class="threat-icon">
+                                <i class="fas fa-code"></i>
+                            </div>
+                            <div class="threat-content">
+                                <h5>SQL Injection</h5>
+                                <p>Detected on customer portal login</p>
+                            </div>
+                            <div class="threat-time">1h ago</div>
+                        </div>
+
+                        <div class="threat-item medium">
+                            <div class="threat-icon">
+                                <i class="fas fa-envelope"></i>
+                            </div>
+                            <div class="threat-content">
+                                <h5>Phishing Email</h5>
+                                <p>Detected in 3 user mailboxes</p>
+                            </div>
+                            <div class="threat-time">2h ago</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="activity-timeline">
+                    <h4>System Activity</h4>
+                    <div class="timeline-item">
+                        <div class="timeline-icon">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="timeline-content">
+                            <h5>Threat Neutralized</h5>
+                            <p>Ransomware process terminated on Server-12</p>
+                            <div class="timeline-time">1 min ago</div>
+                        </div>
+                    </div>
+
+                    <div class="timeline-item">
+                        <div class="timeline-icon">
+                            <i class="fas fa-sync-alt"></i>
+                        </div>
+                        <div class="timeline-content">
+                            <h5>Model Retrained</h5>
+                            <p>Behavioral model updated with new patterns</p>
+                            <div class="timeline-time">25 min ago</div>
+                        </div>
+                    </div>
+
+                    <div class="timeline-item">
+                        <div class="timeline-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <div class="timeline-content">
+                            <h5>Firewall Rule Added</h5>
+                            <p>Blocked IP 185.143.223.41 globally</p>
+                            <div class="timeline-time">45 min ago</div>
+                        </div>
+                    </div>
+
+                    <div class="timeline-item">
+                        <div class="timeline-icon">
+                            <i class="fas fa-cloud-download-alt"></i>
+                        </div>
+                        <div class="timeline-content">
+                            <h5>Threat Intel Updated</h5>
+                            <p>Downloaded latest IOCs from MITRE</p>
+                            <div class="timeline-time">3h ago</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
