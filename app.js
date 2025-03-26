@@ -1,26 +1,17 @@
-
-// Global variables
+// Global Threat Data Store
 let threatData = {
-    timeline: {
-        labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '23:59'],
-        datasets: [
-            { label: 'Critical', data: [2, 5, 3, 8, 4, 6, 3], color: '#ff3d71' },
-            { label: 'High', data: [5, 7, 4, 9, 6, 8, 5], color: '#ffaa00' },
-            { label: 'Total', data: [12, 18, 14, 22, 16, 20, 14], color: '#00f0ff' }
-        ]
-    },
-    distribution: {
-        labels: ['Ransomware', 'Phishing', 'DDoS', 'Insider', 'Malware', 'Exploits'],
-        data: [15, 25, 10, 5, 30, 15],
-        colors: ['#ff3d71', '#ffaa00', '#00e096', '#00f0ff', '#8a2be2', '#ff6b81']
-    },
-    stats: {
-        threats: 142,
-        critical: 23,
-        falsePositives: 8,
-        responseTime: 3.2
-    }
+    timeline: { labels: [], datasets: [] },
+    distribution: { labels: [], data: [], colors: [] },
+    stats: { threats: 0, critical: 0, falsePositives: 0, responseTime: 0 },
+    alerts: []
 };
+
+// Configuration
+const API_BASE_URL = 'http://127.0.0.1:5000';
+const POLL_INTERVAL = 3000; // 3 seconds for real-time updates
+const MAX_RETRIES = 5;
+let currentRetries = 0;
+let pollingInterval;
 
 // DOM Elements
 const elements = {
@@ -35,185 +26,186 @@ const elements = {
         responseTime: document.querySelector('.stat-card:nth-child(4) .stat-value')
     },
     timeFilter: document.querySelector('.time-filter'),
-    quickScanBtn: document.querySelector('.btn-primary')
+    quickScanBtn: document.querySelector('.btn-primary'),
+    connectionStatus: document.getElementById('connectionStatus'),
+    reconnectBtn: document.getElementById('reconnectBtn'),
+    loadingIndicator: document.getElementById('loadingIndicator')
 };
 
-// Initialize application
+// Initialize Application
 document.addEventListener('DOMContentLoaded', function() {
     initCharts();
     initEventListeners();
-    simulateRealTimeUpdates();
+    loadInitialData();
     animateElements();
 });
 
-// Chart Initialization
-function initCharts() {
-    // Threat Timeline Chart
-    new Chart(elements.timelineChart.getContext('2d'), {
-        type: 'line',
-        data: {
-            labels: threatData.timeline.labels,
-            datasets: threatData.timeline.datasets.map(dataset => ({
-                label: dataset.label,
-                data: dataset.data,
-                borderColor: dataset.color,
-                backgroundColor: `${dataset.color}20`,
-                borderWidth: 2,
-                tension: 0.3,
-                fill: true
-            }))
-        },
-        options: getChartOptions('Threats per hour')
-    });
+// ======================== Data Fetching ========================
 
-    // Threat Distribution Chart
-    new Chart(elements.distributionChart.getContext('2d'), {
-        type: 'doughnut',
-        data: {
-            labels: threatData.distribution.labels,
-            datasets: [{
-                data: threatData.distribution.data,
-                backgroundColor: threatData.distribution.colors,
-                borderColor: '#0a0e17',
-                borderWidth: 2
-            }]
-        },
-        options: getChartOptions('Threat Type Distribution', true)
-    });
+async function loadInitialData() {
+    try {
+        showLoading(true);
+        updateConnectionStatus('connecting');
+        
+        const [stats, timeline, distribution] = await Promise.all([
+            fetchAPI('/api/stats'),
+            fetchAPI('/api/timeline'),
+            fetchAPI('/api/distribution')
+        ]);
+
+        threatData = {
+            timeline: timeline.data || { labels: [], datasets: [] },
+            distribution: distribution.data || { labels: [], data: [], colors: [] },
+            stats: stats.data || { threats: 0, critical: 0, falsePositives: 0, responseTime: 0 },
+            alerts: []
+        };
+
+        updateAllCharts();
+        updateStats(threatData.stats);
+        updateConnectionStatus('connected');
+        startPolling();
+        
+    } catch (error) {
+        console.error("Initial load failed:", error);
+        handleDataError(error);
+    } finally {
+        showLoading(false);
+    }
 }
 
-// Chart Options Generator
-function getChartOptions(title, isDoughnut = false) {
-    const baseOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                position: 'top',
-                labels: { color: '#e0f7fa' }
-            },
-            tooltip: {
-                mode: isDoughnut ? 'point' : 'index',
-                intersect: false,
-                callbacks: isDoughnut ? {
-                    label: (context) => {
-                        const label = context.label || '';
-                        const value = context.raw || 0;
-                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                        const percentage = Math.round((value / total) * 100);
-                        return `${label}: ${value} (${percentage}%)`;
-                    }
-                } : {}
-            },
-            title: {
-                display: !!title,
-                text: title,
-                color: '#e0f7fa',
-                font: { size: 14 }
-            }
-        },
-        scales: isDoughnut ? {} : {
-            x: {
-                grid: { color: 'rgba(224, 247, 250, 0.1)' },
-                ticks: { color: '#e0f7fa' }
-            },
-            y: {
-                grid: { color: 'rgba(224, 247, 250, 0.1)' },
-                ticks: { color: '#e0f7fa' },
-                beginAtZero: true
-            }
-        },
-        interaction: {
-            mode: 'nearest',
-            axis: 'x',
-            intersect: false
-        },
-        cutout: isDoughnut ? '70%' : undefined
-    };
+async function fetchAPI(endpoint) {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`);
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+}
+
+function startPolling() {
+    // Clear any existing interval
+    if (pollingInterval) clearInterval(pollingInterval);
     
-    return baseOptions;
+    pollingInterval = setInterval(async () => {
+        try {
+            const updates = await fetchAPI('/api/updates');
+            processUpdates(updates);
+            currentRetries = 0; // Reset retry counter on success
+            updateConnectionStatus('connected');
+        } catch (error) {
+            console.error("Polling error:", error);
+            currentRetries++;
+            
+            if (currentRetries >= MAX_RETRIES) {
+                updateConnectionStatus('disconnected');
+                clearInterval(pollingInterval);
+            }
+        }
+    }, POLL_INTERVAL);
 }
 
-// Event Listeners
-function initEventListeners() {
-    // Time filter buttons
-    elements.timeFilter.addEventListener('click', (e) => {
-        if (e.target.tagName === 'BUTTON') {
-            document.querySelector('.time-filter button.active').classList.remove('active');
-            e.target.classList.add('active');
-            updateDataForTimeRange(e.target.textContent);
+function processUpdates(updates) {
+    if (!updates) return;
+
+    // Update timeline if present
+    if (updates.timeline) {
+        // Merge new timeline data
+        threatData.timeline.labels = [...threatData.timeline.labels, ...updates.timeline.labels];
+        updates.timeline.datasets.forEach((newDataset, i) => {
+            if (threatData.timeline.datasets[i]) {
+                threatData.timeline.datasets[i].data = [
+                    ...threatData.timeline.datasets[i].data,
+                    ...newDataset.data
+                ];
+            }
+        });
+        updateTimelineChart();
+    }
+    
+    // Update distribution if present
+    if (updates.distribution) {
+        threatData.distribution = updates.distribution;
+        updateDistributionChart();
+    }
+    
+    // Update stats if present
+    if (updates.stats) {
+        threatData.stats = { ...threatData.stats, ...updates.stats };
+        updateStats(updates.stats);
+    }
+    
+    // Add new threat alert if present
+    if (updates.newAlert) {
+        addNewThreatAlert(updates.newAlert);
+    }
+}
+
+// ======================== UI Updates ========================
+
+function updateAllCharts() {
+    updateTimelineChart();
+    updateDistributionChart();
+}
+
+function updateTimelineChart() {
+    if (!window.timelineChart) return;
+    
+    window.timelineChart.data.labels = threatData.timeline.labels;
+    window.timelineChart.data.datasets.forEach((dataset, i) => {
+        if (threatData.timeline.datasets[i]) {
+            dataset.data = threatData.timeline.datasets[i].data;
+            if (threatData.timeline.datasets[i].color) {
+                dataset.borderColor = threatData.timeline.datasets[i].color;
+                dataset.backgroundColor = `${threatData.timeline.datasets[i].color}20`;
+            }
         }
     });
-
-    // Quick scan button
-    elements.quickScanBtn.addEventListener('click', () => {
-        startQuickScan();
-    });
-
-    // Threat item click
-    elements.threatList.addEventListener('click', (e) => {
-        const threatItem = e.target.closest('.threat-item');
-        if (threatItem) {
-            showThreatDetails(threatItem);
-        }
-    });
+    
+    // Limit to last 100 data points for performance
+    if (window.timelineChart.data.labels.length > 100) {
+        window.timelineChart.data.labels = window.timelineChart.data.labels.slice(-100);
+        window.timelineChart.data.datasets.forEach(dataset => {
+            dataset.data = dataset.data.slice(-100);
+        });
+    }
+    
+    window.timelineChart.update();
 }
 
-// Time range data update
-function updateDataForTimeRange(range) {
-    // Simulate data changes based on time range
-    const multipliers = {
-        '24h': 1,
-        '7d': 0.8,
-        '30d': 0.6,
-        '90d': 0.4,
-        'Custom': 1.2
-    };
+function updateDistributionChart() {
+    if (!window.distributionChart) return;
     
-    const multiplier = multipliers[range] || 1;
+    window.distributionChart.data.labels = threatData.distribution.labels;
+    window.distributionChart.data.datasets[0].data = threatData.distribution.data;
     
-    threatData.timeline.datasets.forEach(dataset => {
-        dataset.data = dataset.data.map(value => 
-            Math.max(1, Math.round(value * multiplier * (0.8 + Math.random() * 0.4)))
-        );
-    });
+    if (threatData.distribution.colors) {
+        window.distributionChart.data.datasets[0].backgroundColor = threatData.distribution.colors;
+    }
     
-    threatData.distribution.data = threatData.distribution.data.map(value => 
-        Math.max(1, Math.round(value * multiplier * (0.7 + Math.random() * 0.6)))
-    );
-    
-    // Update stats
-    updateStats({
-        threats: Math.round(threatData.stats.threats * multiplier),
-        critical: Math.round(threatData.stats.critical * multiplier * 1.2),
-        falsePositives: Math.min(15, Math.round(threatData.stats.falsePositives * (0.8 + Math.random() * 0.4))),
-        responseTime: (threatData.stats.responseTime * (0.9 + Math.random() * 0.2)).toFixed(1)
-    });
-    
-    // Re-render charts would need to be implemented with Chart.js update methods
-    // In a real app, we would fetch new data from the server here
+    window.distributionChart.update();
 }
 
-// Stats update
 function updateStats(newStats) {
     Object.keys(newStats).forEach(key => {
         if (elements.statValues[key]) {
-            animateValueChange(elements.statValues[key], parseInt(elements.statValues[key].textContent), newStats[key]);
+            animateValueChange(
+                elements.statValues[key],
+                parseFloat(elements.statValues[key].textContent) || 0,
+                newStats[key]
+            );
         }
     });
-    threatData.stats = {...threatData.stats, ...newStats};
 }
 
-// Value change animation
 function animateValueChange(element, start, end) {
-    const duration = 1000;
+    const duration = 800;
     const startTime = performance.now();
     
     function updateValue(currentTime) {
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / duration, 1);
-        const value = Math.floor(start + (end - start) * progress);
-        element.textContent = value;
+        const value = start + (end - start) * progress;
+        element.textContent = typeof end === 'number' ? 
+            Math.floor(value) : value.toFixed(1);
         
         if (progress < 1) {
             requestAnimationFrame(updateValue);
@@ -223,33 +215,156 @@ function animateValueChange(element, start, end) {
     requestAnimationFrame(updateValue);
 }
 
-// Quick scan simulation
-function startQuickScan() {
+// ======================== Threat Management ========================
+
+function addNewThreatAlert(threat) {
+    if (!threat) return;
+    
+    // Add to alerts history
+    threat.timestamp = new Date().toISOString();
+    threatData.alerts.unshift(threat);
+    
+    // Keep only the last 50 alerts
+    if (threatData.alerts.length > 50) {
+        threatData.alerts.pop();
+    }
+    
+    // Create and append alert element
+    const threatHTML = `
+        <div class="threat-item ${threat.severity}">
+            <div class="threat-icon">
+                <i class="fas fa-${threat.icon || 'exclamation-triangle'}"></i>
+            </div>
+            <div class="threat-content">
+                <h5>${threat.name}</h5>
+                <p>${threat.description}</p>
+            </div>
+            <div class="threat-time">just now</div>
+        </div>
+    `;
+
+    elements.threatList.insertAdjacentHTML('afterbegin', threatHTML);
+    
+    // Animate entry
+    anime({
+        targets: elements.threatList.firstChild,
+        translateX: [50, 0],
+        opacity: [0, 1],
+        duration: 500,
+        easing: 'easeOutExpo'
+    });
+
+    // Limit to 15 visible threats
+    if (elements.threatList.children.length > 15) {
+        anime({
+            targets: elements.threatList.lastChild,
+            opacity: 0,
+            height: 0,
+            marginBottom: 0,
+            paddingTop: 0,
+            paddingBottom: 0,
+            duration: 300,
+            easing: 'easeInQuad',
+            complete: () => elements.threatList.lastChild.remove()
+        });
+    }
+
+    // Show alert for critical threats
+    if (threat.severity === 'critical') {
+        showToast(`Critical threat: ${threat.name}`, 'danger');
+    }
+}
+
+// ======================== User Interactions ========================
+
+function initEventListeners() {
+    // Time filter buttons
+    if (elements.timeFilter) {
+        elements.timeFilter.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                document.querySelector('.time-filter button.active')?.classList.remove('active');
+                e.target.classList.add('active');
+                updateDataForTimeRange(e.target.textContent.trim());
+            }
+        });
+    }
+
+    // Quick scan button
+    if (elements.quickScanBtn) {
+        elements.quickScanBtn.addEventListener('click', startQuickScan);
+    }
+
+    // Threat item click
+    if (elements.threatList) {
+        elements.threatList.addEventListener('click', (e) => {
+            const threatItem = e.target.closest('.threat-item');
+            if (threatItem) showThreatDetails(threatItem);
+        });
+    }
+
+    // Reconnect button
+    if (elements.reconnectBtn) {
+        elements.reconnectBtn.addEventListener('click', () => {
+            elements.reconnectBtn.disabled = true;
+            loadInitialData().finally(() => {
+                elements.reconnectBtn.disabled = false;
+            });
+        });
+    }
+}
+
+async function updateDataForTimeRange(range) {
+    try {
+        showLoading(true);
+        const data = await fetchAPI(`/api/threats?range=${encodeURIComponent(range)}`);
+        
+        threatData.timeline = data.timeline || threatData.timeline;
+        threatData.distribution = data.distribution || threatData.distribution;
+        threatData.stats = data.stats || threatData.stats;
+        
+        updateAllCharts();
+        updateStats(threatData.stats);
+        
+    } catch (error) {
+        console.error("Time range update failed:", error);
+        showToast("Failed to load time range data", "danger");
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function startQuickScan() {
     const originalText = elements.quickScanBtn.innerHTML;
     elements.quickScanBtn.disabled = true;
     elements.quickScanBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
     
-    // Simulate scan
-    setTimeout(() => {
-        // Generate random scan results
-        const threatsFound = Math.floor(Math.random() * 5);
-        const vulnerabilities = Math.floor(Math.random() * 3);
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/quick-scan`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
         
-        // Update UI
-        if (threatsFound > 0 || vulnerabilities > 0) {
-            showScanResults(threatsFound, vulnerabilities);
+        const result = await response.json();
+        
+        if (result.threatsFound > 0 || result.vulnerabilities > 0) {
+            showScanResults(result.threatsFound, result.vulnerabilities);
         } else {
             showToast('Scan complete: No threats found', 'success');
         }
-        
+    } catch (error) {
+        console.error("Scan error:", error);
+        showToast("Scan failed", "danger");
+    } finally {
         elements.quickScanBtn.innerHTML = originalText;
         elements.quickScanBtn.disabled = false;
-    }, 3000);
+    }
 }
 
-// Scan results modal
+// ======================== UI Components ========================
+
 function showScanResults(threats, vulnerabilities) {
-    // In a real app, this would be a proper modal
     const resultsHTML = `
         <div class="scan-results">
             <h4><i class="fas fa-search"></i> Scan Results</h4>
@@ -261,23 +376,17 @@ function showScanResults(threats, vulnerabilities) {
                 <i class="fas fa-${vulnerabilities ? 'bug' : 'shield-alt'}"></i>
                 <span>${vulnerabilities} vulnerabilities found</span>
             </div>
-            
         </div>
     `;
     
     showModal('Quick Scan Results', resultsHTML);
     
-    document.getElementById('resolveThreats')?.addEventListener('click', () => {
-        showToast('Threat resolution in progress...', 'info');
-        setTimeout(() => {
-            showToast('All threats resolved successfully!', 'success');
-            closeModal();
-        }, 2000);
-    });
 }
 
-// Threat details
 function showThreatDetails(threatItem) {
+    const severity = threatItem.classList.contains('critical') ? 'critical' : 
+                    threatItem.classList.contains('high') ? 'high' : 'medium';
+    
     const threatTypes = {
         critical: {
             title: 'Critical Threat',
@@ -299,8 +408,6 @@ function showThreatDetails(threatItem) {
         }
     };
     
-    const severity = threatItem.classList.contains('critical') ? 'critical' : 
-                    threatItem.classList.contains('high') ? 'high' : 'medium';
     const threatType = threatTypes[severity];
     const title = threatItem.querySelector('h5').textContent;
     const description = threatItem.querySelector('p').textContent;
@@ -350,7 +457,59 @@ function getActionIcon(action) {
     return icons[action] || 'cog';
 }
 
-// Modal system
+// ======================== Utility Functions ========================
+
+function showLoading(show) {
+    if (elements.loadingIndicator) {
+        elements.loadingIndicator.style.display = show ? 'block' : 'none';
+    }
+}
+
+function updateConnectionStatus(status) {
+    if (!elements.connectionStatus) return;
+    
+    const statusConfig = {
+        connected: {
+            class: 'connected',
+            icon: 'check-circle',
+            text: 'Connected'
+        },
+        disconnected: {
+            class: 'disconnected',
+            icon: 'exclamation-triangle',
+            text: 'Disconnected'
+        },
+        connecting: {
+            class: 'connecting',
+            icon: 'sync-alt fa-spin',
+            text: 'Connecting...'
+        }
+    };
+    
+    const config = statusConfig[status] || statusConfig.disconnected;
+    
+    elements.connectionStatus.className = `connection-status ${config.class}`;
+    elements.connectionStatus.innerHTML = `<i class="fas fa-${config.icon}"></i> ${config.text}`;
+    
+    if (elements.reconnectBtn) {
+        elements.reconnectBtn.style.display = status === 'disconnected' ? 'block' : 'none';
+    }
+}
+
+function handleDataError(error) {
+    console.error("Data error:", error);
+    updateConnectionStatus('disconnected');
+    showToast("Connection to server failed", "danger");
+    
+    // Schedule retry
+    if (currentRetries < MAX_RETRIES) {
+        setTimeout(() => {
+            currentRetries++;
+            loadInitialData();
+        }, 5000);
+    }
+}
+
 function showModal(title, content) {
     const modalHTML = `
         <div class="modal-overlay">
@@ -400,7 +559,6 @@ function closeModal() {
     }
 }
 
-// Toast notifications
 function showToast(message, type = 'info') {
     const colors = {
         info: '#00f0ff',
@@ -449,111 +607,96 @@ function getToastIcon(type) {
     return icons[type] || 'info-circle';
 }
 
-// Real-time simulation
-function simulateRealTimeUpdates() {
-    // Simulate new threats
-    setInterval(() => {
-        addRandomThreat();
-    }, 15000);
-    
-    // Simulate stats fluctuations
-    setInterval(() => {
-        updateStats({
-            threats: threatData.stats.threats + Math.floor(Math.random() * 3),
-            critical: threatData.stats.critical + (Math.random() > 0.7 ? 1 : 0),
-            falsePositives: Math.max(2, Math.min(15, 
-                threatData.stats.falsePositives + (Math.random() > 0.5 ? 0.2 : -0.2))),
-            responseTime: Math.max(1.5, Math.min(5, 
-                parseFloat(threatData.stats.responseTime) + (Math.random() > 0.5 ? 0.1 : -0.1))).toFixed(1)
-        });
-    }, 10000);
-}
+// ======================== Chart Initialization ========================
 
-function addRandomThreat() {
-    const threatTypes = [
-        { 
-            class: 'critical', 
-            icon: 'skull', 
-            name: 'Ransomware Attempt', 
-            desc: 'Detected encryption process on Server-' + (Math.floor(Math.random() * 20) + 1 )
+function initCharts() {
+    // Timeline Chart
+    window.timelineChart = new Chart(elements.timelineChart.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Threats',
+                data: [],
+                borderColor: '#00f0ff',
+                backgroundColor: 'rgba(0, 240, 255, 0.1)',
+                borderWidth: 2,
+                tension: 0.3,
+                fill: true
+            }]
         },
-        { 
-            class: 'high', 
-            icon: 'user-secret', 
-            name: 'Brute Force Attack', 
-            desc: Math.floor(Math.random() * 20) + ' failed logins on admin account' 
-        },
-        { 
-            class: 'medium', 
-            icon: 'network-wired', 
-            name: 'Port Scanning', 
-            desc: 'Multiple ports scanned from ' + generateRandomIP() 
-        },
-        { 
-            class: 'high', 
-            icon: 'code', 
-            name: 'SQL Injection', 
-            desc: 'Detected on ' + ['login form', 'search page', 'contact form'][Math.floor(Math.random() * 3)] 
-        },
-        { 
-            class: 'medium', 
-            icon: 'envelope', 
-            name: 'Phishing Email', 
-            desc: 'Detected in ' + ['CEO', 'HR', 'Finance'][Math.floor(Math.random() * 3)] + ' mailbox' 
-        }
-    ];
-    
-    const randomThreat = threatTypes[Math.floor(Math.random() * threatTypes.length)];
-    const threatHTML = `
-        <div class="threat-item ${randomThreat.class}">
-            <div class="threat-icon">
-                <i class="fas fa-${randomThreat.icon}"></i>
-            </div>
-            <div class="threat-content">
-                <h5>${randomThreat.name}</h5>
-                <p>${randomThreat.desc}</p>
-            </div>
-            <div class="threat-time">just now</div>
-        </div>
-    `;
-    
-    elements.threatList.insertAdjacentHTML('afterbegin', threatHTML);
-    
-    // Animate new threat
-    anime({
-        targets: elements.threatList.firstChild,
-        translateX: [50, 0],
-        opacity: [0, 1],
-        duration: 500,
-        easing: 'easeOutExpo'
+        options: getChartOptions('Threats Over Time')
     });
-    
-    // Keep only last 10 threats
-    if (elements.threatList.children.length > 10) {
-        anime({
-            targets: elements.threatList.lastChild,
-            opacity: 0,
-            height: 0,
-            marginBottom: 0,
-            paddingTop: 0,
-            paddingBottom: 0,
-            duration: 300,
-            easing: 'easeInQuad',
-            complete: () => elements.threatList.lastChild.remove()
-        });
-    }
-    
-    // Show toast notification for critical threats
-    if (randomThreat.class === 'critical') {
-        showToast(`Critical threat detected: ${randomThreat.name}`, 'danger');
-    }
+
+    // Distribution Chart
+    window.distributionChart = new Chart(elements.distributionChart.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: [
+                    '#ff3d71', '#ffaa00', '#00e096', '#00f0ff', '#8a2be2'
+                ],
+                borderColor: '#0a0e17',
+                borderWidth: 2
+            }]
+        },
+        options: getChartOptions('Threat Distribution', true)
+    });
 }
 
-function generateRandomIP() {
-    return `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+function getChartOptions(title, isDoughnut = false) {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'top',
+                labels: { color: '#e0f7fa' }
+            },
+            tooltip: {
+                mode: isDoughnut ? 'point' : 'index',
+                intersect: false,
+                callbacks: isDoughnut ? {
+                    label: (context) => {
+                        const label = context.label || '';
+                        const value = context.raw || 0;
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                        const percentage = Math.round((value / total) * 100);
+                        return `${label}: ${value} (${percentage}%)`;
+                    }
+                } : {}
+            },
+            title: {
+                display: !!title,
+                text: title,
+                color: '#e0f7fa',
+                font: { size: 14 }
+            }
+        },
+        scales: isDoughnut ? {} : {
+            x: {
+                grid: { color: 'rgba(224, 247, 250, 0.1)' },
+                ticks: { color: '#e0f7fa' }
+            },
+            y: {
+                grid: { color: 'rgba(224, 247, 250, 0.1)' },
+                ticks: { color: '#e0f7fa' },
+                beginAtZero: true
+            }
+        },
+        interaction: {
+            mode: 'nearest',
+            axis: 'x',
+            intersect: false
+        },
+        cutout: isDoughnut ? '70%' : undefined
+    };
 }
 
-// Initial animations
+// ======================== Animations ========================
+
 function animateElements() {
     // Stat cards animation
     anime({

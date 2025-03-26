@@ -1,5 +1,5 @@
-app.py
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, jsonify
+from flask_cors import CORS, cross_origin
 import os
 import pandas as pd
 import numpy as np
@@ -13,16 +13,28 @@ import subprocess
 import platform
 from pathlib import Path
 import time
+import random
+from datetime import datetime, timedelta
 
+# Initialize Flask app with CORS support
 app = Flask(__name__)
+CORS(app, resources={
+    r"/api/*": {"origins": "*"},  # Allow all domains to access API endpoints
+    r"/static/*": {"origins": "*"}  # Allow static files
+})
+
+# App configuration
 app.secret_key = 'your_secret_key_here'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB limit
 app.config['CAPTURE_FOLDER'] = 'captures'
+app.config['CORS_HEADERS'] = 'Content-Type'
 
 # Ensure directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['CAPTURE_FOLDER'], exist_ok=True)
+
+# ======================== Utility Functions ========================
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'csv', 'pcap'}
@@ -48,6 +60,8 @@ def find_tshark():
         return 'tshark'
     except:
         return None
+
+# ======================== Core Functionality ========================
 
 def capture_wifi_traffic(duration=30):
     """Capture Wi-Fi traffic and save as output.csv"""
@@ -152,11 +166,146 @@ def create_plot(data, feature1, feature2):
     except Exception as e:
         raise Exception(f"Plot creation failed: {str(e)}")
 
+# ======================== API Endpoints ========================
+
+@app.route('/api/stats')
+@cross_origin()
+def get_stats():
+    """Endpoint to get current threat statistics"""
+    return jsonify({
+        "data": {
+            "threats": random.randint(30, 50),
+            "critical": random.randint(3, 8),
+            "falsePositives": random.randint(1, 5),
+            "responseTime": round(random.uniform(1.5, 3.5), 1)
+        }
+    })
+
+@app.route('/api/timeline')
+@cross_origin()
+def get_timeline():
+    """Endpoint to get timeline data for charts"""
+    hours = [f"{i}:00" for i in range(24)]
+    threats = [random.randint(0, 20) for _ in range(24)]
+    
+    return jsonify({
+        "data": {
+            "labels": hours,
+            "datasets": [{
+                "label": "Threats",
+                "data": threats,
+                "color": "#ff3d71"
+            }]
+        }
+    })
+
+@app.route('/api/distribution')
+@cross_origin()
+def get_distribution():
+    """Endpoint to get threat distribution data"""
+    return jsonify({
+        "data": {
+            "labels": ["Malware", "Phishing", "DDoS", "Brute Force", "Other"],
+            "data": [random.randint(10, 20), random.randint(5, 15), 
+                    random.randint(3, 10), random.randint(2, 8), random.randint(5, 12)],
+            "colors": ["#ff3d71", "#ffaa00", "#00e096", "#00f0ff", "#8a2be2"]
+        }
+    })
+
+@app.route('/api/updates')
+@cross_origin()
+def get_updates():
+    """Endpoint for polling updates (returns only new data)"""
+    now = datetime.now()
+    recent_threats = random.randint(0, 3)
+    
+    return jsonify({
+        "timeline": {
+            "labels": [f"{now.hour}:{now.minute}"],
+            "datasets": [{
+                "data": [recent_threats],
+                "color": "#ff3d71"
+            }]
+        },
+        "stats": {
+            "threats": recent_threats,
+            "critical": 1 if recent_threats > 0 else 0
+        },
+        "newAlert": {
+            "name": random.choice(["Malware Detected", "Phishing Attempt", "Port Scan", "DDoS Alert"]),
+            "description": "Potential security threat detected in network traffic",
+            "severity": random.choice(["critical", "high", "medium"]),
+            "icon": random.choice(["skull", "user-secret", "exclamation-triangle"])
+        } if recent_threats > 0 else None
+    })
+
+@app.route('/api/threats')
+@cross_origin()
+def get_threats_by_range():
+    """Endpoint for time-filtered threat data"""
+    range_param = request.args.get('range', '24h')
+    
+    if range_param == '24h':
+        hours = 24
+    elif range_param == '7d':
+        hours = 168
+    elif range_param == '30d':
+        hours = 720
+    else:
+        hours = 24
+    
+    labels = []
+    current_time = datetime.now()
+    
+    for i in range(hours, 0, -1):
+        time_point = current_time - timedelta(hours=i)
+        labels.append(time_point.strftime("%m/%d %H:%M"))
+    
+    data_points = [random.randint(0, 20) for _ in range(hours)]
+    
+    return jsonify({
+        "timeline": {
+            "labels": labels,
+            "datasets": [{
+                "label": "Threats",
+                "data": data_points,
+                "color": "#ff3d71"
+            }]
+        },
+        "distribution": {
+            "labels": ["Malware", "Phishing", "DDoS", "Brute Force", "Other"],
+            "data": [random.randint(10, 20), random.randint(5, 15), 
+                    random.randint(3, 10), random.randint(2, 8), random.randint(5, 12)],
+            "colors": ["#ff3d71", "#ffaa00", "#00e096", "#00f0ff", "#8a2be2"]
+        },
+        "stats": {
+            "threats": sum(data_points),
+            "critical": sum(1 for x in data_points if x > 15),
+            "falsePositives": random.randint(1, 5),
+            "responseTime": round(random.uniform(1.5, 3.5), 1)
+        }
+    })
+
+@app.route('/api/quick-scan', methods=['POST'])
+@cross_origin()
+def quick_scan():
+    """Endpoint to initiate a quick scan"""
+    time.sleep(2)  # Simulate scan time
+    threats_found = random.randint(0, 5)
+    vulnerabilities = random.randint(0, 3)
+    
+    return jsonify({
+        "threatsFound": threats_found,
+        "vulnerabilities": vulnerabilities,
+        "message": "Scan completed successfully"
+    })
+
+# ======================== Web Routes ========================
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
         if 'capture' in request.form:
-            # Handle live capture request
             try:
                 duration = int(request.form.get('capture_duration', 30))
                 filename = capture_wifi_traffic(duration)
@@ -166,7 +315,6 @@ def index():
                 flash(f'Capture failed: {str(e)}')
                 return redirect(request.url)
         
-        # Handle file upload
         if 'file' not in request.files:
             flash('No file selected')
             return redirect(request.url)
@@ -259,5 +407,7 @@ def download(filename):
     else:
         return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
+# ======================== Main Execution ========================
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)

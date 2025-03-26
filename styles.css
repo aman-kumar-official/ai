@@ -656,3 +656,24 @@ nav a:hover::after {
         padding-bottom: 0.5rem;
     }
 }
+
+.connection-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.connection-status {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.connection-status.connected {
+    background-color: var(--success);
+}
+
+.connection-status.disconnected {
+    background-color: var(--danger);
+}
