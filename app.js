@@ -261,9 +261,7 @@ function showScanResults(threats, vulnerabilities) {
                 <i class="fas fa-${vulnerabilities ? 'bug' : 'shield-alt'}"></i>
                 <span>${vulnerabilities} vulnerabilities found</span>
             </div>
-            <button class="btn btn-primary" id="resolveThreats">
-                <i class="fas fa-bolt"></i> Resolve Threats
-            </button>
+            
         </div>
     `;
     
